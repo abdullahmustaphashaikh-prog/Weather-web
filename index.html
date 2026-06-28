@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SkyCast Dashboard</title>
+<script>
+  const _warn = console.warn.bind(console);
+  console.warn = (...a) => { if (typeof a[0]==='string' && a[0].includes('cdn.tailwindcss')) return; _warn(...a); };
+</script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          primary: '#38bdf8',
+          'on-primary': '#00354a',
+          'on-surface': '#e2e2e2',
+          'on-surface-variant': '#bdc8d1',
+          background: '#0F172A',
+        }
+      }
+    }
+  }
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: #0F172A;
+    color: #e2e2e2;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* Glass cards */
+  .gc {
+    backdrop-filter: blur(12px);
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.11);
+    border-radius: 1.5rem;
+    transition: background 0.3s, border 0.3s;
+  }
+  .gc:hover {
+    background: rgba(255,255,255,0.11);
+    border-color: rgba(255,255,255,0.18);
+  }
+
+  /* Loading */
+  #ov {
+    position: fixed; inset: 0; background: #0F172A;
+    z-index: 200; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px;
+    transition: opacity 0.4s;
+  }
+  #ov.hide { opacity: 0; pointer-events: none; }
+  .spin {
+    width: 44px; height: 44px;
+    border: 3px solid rgba(56,189,248,0.2);
+    border-top-color: #38bdf8;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Fade in */
+  @keyframes fadeUp { from { opacity:0; transform:translateY(12px);} to { opacity:1; transform:none;} }
+  .fu { animation: fadeUp 0.45s ease forwards; }
+
+  /* Sun arc */
+  @keyframes dash { to { stroke-dashoffset: 0; } }
+  .sun-path { stroke-dasharray:200; stroke-dashoffset:200; animation: dash 2s ease-out forwards; }
+
+  /* Dropdown */
+  .drop {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+    background: #1a2636; border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 14px; overflow: hidden; z-index: 300;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+  }
+  .drop-item {
+    padding: 11px 16px; cursor: pointer; font-size: 13px;
+    color: #e2e2e2; transition: background 0.15s;
+  }
+  .drop-item:hover { background: rgba(56,189,248,0.15); color: #38bdf8; }
+
+  /* Toast */
+  #toast {
+    display: none; position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%); background: #7f1d1d; color: #fca5a5;
+    padding: 11px 22px; border-radius: 12px; font-size: 13px; z-index: 400;
+    white-space: nowrap;
+  }
+
+  /* ── LIGHT MODE ── */
+  body.light { background: #EFF6FF; color: #1e293b; }
+  body.light .gc { background: rgba(255,255,255,0.65); border-color: rgba(0,0,0,0.09); }
+  body.light .gc:hover { background: rgba(255,255,255,0.85); }
+  body.light header { background: rgba(239,246,255,0.85) !important; border-color: rgba(0,0,0,0.07) !important; }
+  body.light #ov { background: #EFF6FF; }
+  body.light .drop { background: #fff; border-color: rgba(0,0,0,0.1); }
+  body.light .drop-item { color: #1e293b; }
+  body.light .mbar { background: rgba(239,246,255,0.97) !important; border-color: rgba(0,0,0,0.07) !important; }
+  body.light .mbar input { background: rgba(0,0,0,0.06) !important; border-color: rgba(0,0,0,0.12) !important; color: #1e293b !important; }
+  body.light footer { background: rgba(239,246,255,0.5) !important; border-color: rgba(0,0,0,0.07) !important; }
+  body.light .txt-muted { color: #64748b !important; }
+  body.light .unit-bar { background: rgba(0,0,0,0.08) !important; }
+
+  /* ── MOBILE SEARCH BAR (below header, shown only on mobile) ── */
+  .mbar {
+    display: none;
+    position: fixed; top: 64px; left: 0; right: 0; z-index: 99;
+    padding: 8px 16px;
+    background: rgba(15,23,42,0.97);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .mbar .wrap { position: relative; }
+  .mbar input {
+    width: 100%; background: rgba(255,255,255,0.09);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 99px; padding: 9px 16px 9px 38px;
+    font-size: 14px; color: #e2e2e2; outline: none;
+    font-family: Inter, sans-serif;
+  }
+  .mbar input::placeholder { color: rgba(189,200,209,0.6); }
+  .mbar .ico {
+    position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+    font-size: 20px; color: #bdc8d1; pointer-events: none;
+  }
+  .mbar .mdrop {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    background: #1a2636; border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 14px; overflow: hidden; z-index: 300;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45); display: none;
+  }
+
+  /* ── RESPONSIVE BREAKPOINTS ── */
+  /* Mobile: ≤ 639px */
+  @media (max-width: 639px) {
+    .mbar { display: block; }
+    main { margin-top: 7.5rem !important; }
+    .temp-num { font-size: 64px !important; line-height: 1 !important; }
+    .hero-card { padding: 1.25rem !important; }
+    .stat-grid { grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .stat-card { padding: 1rem !important; }
+    .stat-card .mat-icon { font-size: 24px !important; margin-bottom: 6px !important; }
+    .sidebar { margin-top: 0; }
+    .fc-grid { grid-template-columns: 1fr 1fr !important; }
+  }
+  /* Tablet: 640–1023px */
+  @media (min-width: 640px) and (max-width: 1023px) {
+    .mbar { display: block; }
+    main { margin-top: 7.5rem !important; }
+    .temp-num { font-size: 80px !important; line-height: 1 !important; }
+    .fc-grid { grid-template-columns: repeat(5, 1fr) !important; }
+  }
+  /* Show desktop search only on md+ */
+  @media (min-width: 640px) {
+    #dsearch { display: flex !important; }
+  }
+  @media (min-width: 1024px) {
+    .mbar { display: none !important; }
+  }
+</style>
+</head>
+<body class="flex flex-col">
+
+<!-- Loading overlay -->
+<div id="ov">
+  <div class="spin"></div>
+  <p style="color:#38bdf8;font-size:13px;">Fetching weather data...</p>
+</div>
+
+<!-- Error toast -->
+<div id="toast"></div>
+
+<!-- ══ HEADER ══ -->
+<header class="fixed top-0 w-full z-50 backdrop-blur-md border-b border-white/5 flex justify-center"
+        style="background:rgba(15,23,42,0.7); height:64px;">
+  <div class="w-full max-w-[1440px] flex items-center justify-between px-4 lg:px-6">
+
+    <!-- Logo -->
+    <div class="flex items-center gap-2 shrink-0">
+      <span class="material-symbols-outlined text-[#38bdf8] hidden lg:block" style="font-size:28px;">cloud</span>
+      <span style="font-size:18px;font-weight:700;color:#38bdf8;letter-spacing:-0.02em;">SkyCast</span>
+    </div>
+
+    <!-- Desktop search (hidden on mobile/tablet — shown via CSS) -->
+    <div id="dsearch" class="hidden flex-1 max-w-xl mx-8 relative">
+      <button id="sibtn" class="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-[#bdc8d1] hover:text-[#38bdf8] transition-colors flex items-center">
+        <span class="material-symbols-outlined" style="font-size:20px;">search</span>
+      </button>
+      <input id="si" type="text" autocomplete="off"
+             placeholder="Search city or zip code..."
+             class="w-full rounded-full py-2 pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-[#38bdf8]"
+             style="background:rgba(255,255,255,0.09);border:1px solid rgba(255,255,255,0.13);color:#e2e2e2;"/>
+      <div id="sdrop" class="drop" style="display:none;"></div>
+    </div>
+
+    <!-- Right controls -->
+    <div class="flex items-center gap-3 shrink-0">
+      <button id="unitnav" class="hidden lg:block text-sm text-[#bdc8d1] hover:text-[#38bdf8] transition-colors font-medium">Unit: °C</button>
+      <button id="themetgl"
+              class="gc flex items-center justify-center rounded-full transition-transform hover:scale-105 active:scale-95"
+              style="width:36px;height:36px;">
+        <span id="themeico" class="material-symbols-outlined text-[#38bdf8]" style="font-size:20px;">light_mode</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ══ MOBILE SEARCH BAR ══ -->
+<div class="mbar">
+  <div class="wrap">
+    <span class="ico material-symbols-outlined">search</span>
+    <input id="msi" type="text" autocomplete="off" placeholder="Search city or zip code..."/>
+    <div id="msdrop" class="mdrop"></div>
+  </div>
+</div>
+
+<!-- ══ MAIN ══ -->
+<main class="mt-24 pb-16 w-full max-w-[1440px] mx-auto px-4 lg:px-6 flex-grow">
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+    <!-- Left col: hero + hourly + 5-day -->
+    <div class="lg:col-span-9 flex flex-col gap-5">
+
+      <!-- Hero -->
+      <section class="grid grid-cols-1 md:grid-cols-12 gap-5 fu">
+
+        <!-- Current weather card -->
+        <div class="md:col-span-8 gc hero-card relative overflow-hidden group" style="padding:2rem;">
+          <div class="absolute -right-16 -top-16 w-72 h-72 rounded-full pointer-events-none"
+               style="background:rgba(56,189,248,0.15);filter:blur(80px);"></div>
+          <div class="relative z-10">
+            <!-- City + date -->
+            <div class="flex items-center gap-2 mb-1">
+              <span class="material-symbols-outlined text-[#38bdf8]" style="font-size:18px;">location_on</span>
+              <h2 id="city" style="font-size:clamp(18px,3vw,28px);font-weight:700;line-height:1.2;">Mumbai, IN</h2>
+            </div>
+            <p id="cdate" class="txt-muted mb-6" style="font-size:14px;color:#bdc8d1;">Monday, 12 June</p>
+
+            <!-- Temp row -->
+            <div class="flex items-center gap-4 flex-wrap">
+              <span id="tempdis" class="temp-num font-bold text-[#38bdf8]"
+                    style="font-size:100px;line-height:1;letter-spacing:-0.04em;">32°</span>
+              <div class="flex flex-col gap-2">
+                <!-- C/F toggle -->
+                <div class="unit-bar flex items-center rounded-xl p-1 w-fit" style="background:rgba(255,255,255,0.09);">
+                  <button id="btnc" onclick="setUnit('C')"
+                          class="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                          style="background:#38bdf8;color:#00354a;">°C</button>
+                  <button id="btnf" onclick="setUnit('F')"
+                          class="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                          style="color:#bdc8d1;">°F</button>
+                </div>
+                <span id="wdesc" style="font-size:18px;font-weight:600;">Partly Cloudy</span>
+                <p id="feels" style="font-size:14px;color:#bdc8d1;">Feels like 34°</p>
+              </div>
+              <!-- Weather icon -->
+              <span id="wico" class="material-symbols-outlined text-[#38bdf8] hidden md:block ml-auto"
+                    style="font-size:130px;font-variation-settings:'FILL' 1;filter:drop-shadow(0 0 20px rgba(56,189,248,0.4));">wb_sunny</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stat cards -->
+        <div class="md:col-span-4 stat-grid grid grid-cols-2 gap-3">
+          <div class="gc stat-card flex flex-col items-center justify-center text-center" style="padding:1.25rem;border-radius:1.5rem;">
+            <span class="mat-icon material-symbols-outlined text-[#38bdf8]" style="font-size:28px;margin-bottom:8px;">humidity_percentage</span>
+            <p style="font-size:11px;color:#bdc8d1;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Humidity</p>
+            <span id="hum" style="font-size:20px;font-weight:600;">72%</span>
+          </div>
+          <div class="gc stat-card flex flex-col items-center justify-center text-center" style="padding:1.25rem;border-radius:1.5rem;">
+            <span class="mat-icon material-symbols-outlined text-[#38bdf8]" style="font-size:28px;margin-bottom:8px;">air</span>
+            <p style="font-size:11px;color:#bdc8d1;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Wind</p>
+            <span id="wind" style="font-size:20px;font-weight:600;">14 <small style="font-size:13px;">km/h</small></span>
+          </div>
+          <div class="gc stat-card flex flex-col items-center justify-center text-center" style="padding:1.25rem;border-radius:1.5rem;">
+            <span class="mat-icon material-symbols-outlined text-[#38bdf8]" style="font-size:28px;margin-bottom:8px;">visibility</span>
+            <p style="font-size:11px;color:#bdc8d1;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Visibility</p>
+            <span id="vis" style="font-size:20px;font-weight:600;">10 <small style="font-size:13px;">km</small></span>
+          </div>
+          <div class="gc stat-card flex flex-col items-center justify-center text-center" style="padding:1.25rem;border-radius:1.5rem;">
+            <span class="mat-icon material-symbols-outlined text-[#38bdf8]" style="font-size:28px;margin-bottom:8px;">sunny</span>
+            <p style="font-size:11px;color:#bdc8d1;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">UV Index</p>
+            <span id="uvi" style="font-size:20px;font-weight:600;">5 <small style="font-size:13px;">Med</small></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Hourly forecast -->
+      <section class="gc fu" style="padding:1.75rem;">
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-[#38bdf8]" style="font-size:20px;">schedule</span>
+            <h3 style="font-size:17px;font-weight:600;">Hourly Forecast</h3>
+          </div>
+          <span style="font-size:12px;color:#38bdf8;background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.2);padding:3px 12px;border-radius:99px;">Next 24 Hours</span>
+        </div>
+        <div id="hchart" style="height:180px;display:flex;align-items:flex-end;gap:6px;padding:0 4px;overflow-x:auto;" class="hide-scrollbar"></div>
+      </section>
+
+      <!-- 5-day forecast -->
+      <section class="fu">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="material-symbols-outlined text-[#38bdf8]" style="font-size:20px;">calendar_month</span>
+          <h3 style="font-size:17px;font-weight:600;">5-Day Forecast</h3>
+        </div>
+        <div id="fcstrip" class="fc-grid grid gap-3" style="grid-template-columns:repeat(5,1fr);"></div>
+      </section>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar lg:col-span-3 flex flex-col gap-5">
+
+      <!-- AQI -->
+      <div class="gc fu" style="padding:1.75rem;">
+        <div class="flex items-center gap-2 mb-5">
+          <span class="material-symbols-outlined text-[#38bdf8]" style="font-size:20px;">masks</span>
+          <h3 style="font-size:17px;font-weight:600;">Air Quality</h3>
+        </div>
+        <div class="flex items-baseline justify-between mb-3">
+          <span id="aqiv" style="font-size:52px;font-weight:700;line-height:1;">--</span>
+          <span id="aqil" style="font-size:12px;padding:4px 12px;border-radius:99px;border:1px solid;font-weight:600;">--</span>
+        </div>
+        <div style="width:100%;height:10px;background:rgba(255,255,255,0.1);border-radius:99px;overflow:hidden;margin:14px 0;">
+          <div id="aqibar" style="height:100%;background:linear-gradient(to right,#22c55e,#eab308,#ef4444);width:10%;transition:width 0.6s ease;"></div>
+        </div>
+        <p id="aqid" style="font-size:13px;color:#bdc8d1;line-height:1.6;">Loading...</p>
+        <div style="margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,0.07);">
+          <div class="flex justify-between mb-3">
+            <span style="font-size:13px;color:#bdc8d1;">PM2.5</span>
+            <span id="pm25" style="font-size:13px;font-weight:600;">--</span>
+          </div>
+          <div class="flex justify-between">
+            <span style="font-size:13px;color:#bdc8d1;">SO2</span>
+            <span id="so2" style="font-size:13px;font-weight:600;">--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sun position -->
+      <div class="gc fu" style="padding:1.75rem;">
+        <div class="flex items-center gap-2 mb-5">
+          <span class="material-symbols-outlined text-[#38bdf8]" style="font-size:20px;">wb_twilight</span>
+          <h3 style="font-size:17px;font-weight:600;">Sun Position</h3>
+        </div>
+        <div style="position:relative;height:110px;margin-bottom:16px;">
+          <svg viewBox="0 0 100 55" preserveAspectRatio="none" style="width:100%;height:100%;">
+            <path d="M5,50 Q50,5 95,50" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
+            <path class="sun-path" d="M5,50 Q50,5 95,50" fill="none" stroke="#38bdf8" stroke-linecap="round" stroke-width="2"/>
+            <circle id="sundot" cx="50" cy="27" r="5" fill="#38bdf8" style="filter:drop-shadow(0 0 4px #38bdf8);"/>
+          </svg>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <p style="font-size:11px;color:#bdc8d1;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Sunrise</p>
+            <span id="sunr" style="font-size:18px;font-weight:600;">6:02 <small style="font-size:12px;opacity:0.55;">AM</small></span>
+          </div>
+          <div style="text-align:right;">
+            <p style="font-size:11px;color:#bdc8d1;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Sunset</p>
+            <span id="suns" style="font-size:18px;font-weight:600;">7:15 <small style="font-size:12px;opacity:0.55;">PM</small></span>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.07);">
+          <div class="flex justify-between">
+            <span style="font-size:13px;color:#bdc8d1;">Daylight Length</span>
+            <span id="daylen" style="font-size:13px;font-weight:600;">13h 13m</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Precipitation -->
+      <div class="gc fu" style="padding:1.75rem;">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="material-symbols-outlined text-[#38bdf8]" style="font-size:20px;">water_drop</span>
+          <h3 style="font-size:17px;font-weight:600;">Precipitation</h3>
+        </div>
+        <div class="flex items-baseline gap-2 mb-3">
+          <span id="pop" style="font-size:36px;font-weight:700;">0%</span>
+          <span style="font-size:14px;color:#bdc8d1;">Chance today</span>
+        </div>
+        <p id="popd" style="font-size:13px;color:#bdc8d1;line-height:1.6;">Expect dry conditions for the rest of the week.</p>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<!-- ══ FOOTER ══ -->
+<footer style="border-top:1px solid rgba(255,255,255,0.06);padding:2.5rem 1.5rem;background:rgba(15,23,42,0.3);">
+  <div class="max-w-[1440px] mx-auto flex flex-col md:flex-row justify-between items-center gap-5 text-center md:text-left">
+    <div>
+      <p style="font-size:16px;font-weight:700;color:#38bdf8;">SkyCast</p>
+      <p style="font-size:12px;color:#64748b;margin-top:2px;">Reliable weather insights since 2023.</p>
+    </div>
+    <div class="flex flex-wrap justify-center gap-6">
+      <a href="#" style="font-size:13px;color:#94a3b8;" class="hover:text-[#38bdf8] transition-colors">Privacy Policy</a>
+      <a href="#" style="font-size:13px;color:#94a3b8;" class="hover:text-[#38bdf8] transition-colors">Terms of Service</a>
+      <a href="#" style="font-size:13px;color:#94a3b8;" class="hover:text-[#38bdf8] transition-colors">Help Center</a>
+      <a href="#" style="font-size:13px;color:#94a3b8;" class="hover:text-[#38bdf8] transition-colors">Contact Us</a>
+    </div>
+    <div>
+      <p style="font-size:12px;color:#475569;">Data powered by OpenWeatherMap API</p>
+      <p style="font-size:11px;color:#334155;margin-top:2px;">© 2025 SkyCast. All rights reserved.</p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .hide-scrollbar::-webkit-scrollbar { display:none; }
+  .hide-scrollbar { -ms-overflow-style:none; scrollbar-width:none; }
+</style>
+
+<script>
+const KEY = 'e708c6d606480324507b71ef6d643395';
+let unit = 'C', tempC = 32, feelsC = 34, hrTemps = [], fcData = [], stimer = null;
+
+// ── Helpers ──
+const toF = c => Math.round(c * 9/5 + 32);
+const disp = c => unit === 'C' ? Math.round(c) + '°' : toF(c) + '°';
+const $ = id => document.getElementById(id);
+
+function wIcon(id, day=true) {
+  if (id >= 200 && id < 300) return 'thunderstorm';
+  if (id >= 300 && id < 500) return 'rainy';
+  if (id >= 500 && id < 511) return 'rainy';
+  if (id >= 511 && id < 600) return 'weather_snowy';
+  if (id >= 600 && id < 700) return 'weather_snowy';
+  if (id >= 700 && id < 800) return 'foggy';
+  if (id === 800) return day ? 'wb_sunny' : 'nights_stay';
+  if (id === 801) return day ? 'partly_cloudy_day' : 'nights_stay';
+  return 'cloud';
+}
+function uvLabel(v) {
+  if (v<=2) return 'Low'; if (v<=5) return 'Mod';
+  if (v<=7) return 'High'; if (v<=10) return 'V.Hi'; return 'Ext';
+}
+function aqiInfo(a) {
+  return [
+    null,
+    {l:'Good',    d:'Air quality is satisfactory with little to no risk.',      c:'#22c55e', bg:'rgba(34,197,94,0.15)',  br:'rgba(34,197,94,0.3)',  pct:10},
+    {l:'Fair',    d:'Acceptable quality; slight risk for sensitive groups.',     c:'#84cc16', bg:'rgba(132,204,22,0.15)', br:'rgba(132,204,22,0.3)', pct:28},
+    {l:'Moderate',d:'Sensitive groups may experience health effects.',           c:'#eab308', bg:'rgba(234,179,8,0.15)',  br:'rgba(234,179,8,0.3)',  pct:50},
+    {l:'Poor',    d:'Everyone may begin to experience health effects.',          c:'#f97316', bg:'rgba(249,115,22,0.15)', br:'rgba(249,115,22,0.3)', pct:72},
+    {l:'V. Poor', d:'Health alert: serious effects for everyone.',               c:'#ef4444', bg:'rgba(239,68,68,0.15)',  br:'rgba(239,68,68,0.3)',  pct:92},
+  ][a] || {l:'--', d:'--', c:'#94a3b8', bg:'rgba(148,163,184,0.1)', br:'rgba(148,163,184,0.2)', pct:0};
+}
+function fmtTime(unix, tz) {
+  const d = new Date((unix + tz) * 1000);
+  let h = d.getUTCHours(), m = d.getUTCMinutes();
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${String(m).padStart(2,'0')} <small style="font-size:11px;opacity:0.55;">${ap}</small>`;
+}
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
+function showOv(msg='Updating...') {
+  const o = $('ov'); o.style.display = 'flex'; o.classList.remove('hide');
+  o.querySelector('p').textContent = msg;
+}
+function hideOv() {
+  const o = $('ov'); o.classList.add('hide');
+  setTimeout(() => o.style.display = 'none', 420);
+}
+
+// ── Render ──
+function renderCurrent(d) {
+  const day = d.weather[0].icon.endsWith('d');
+  tempC = d.main.temp; feelsC = d.main.feels_like;
+  $('city').textContent = `${d.name}, ${d.sys.country}`;
+  $('cdate').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',day:'numeric',month:'long'});
+  $('tempdis').textContent = disp(tempC);
+  $('feels').textContent = `Feels like ${disp(feelsC)}`;
+  $('wdesc').textContent = d.weather[0].description.replace(/\b\w/g,c=>c.toUpperCase());
+  $('hum').textContent = `${d.main.humidity}%`;
+  $('wind').innerHTML = `${Math.round(d.wind.speed*3.6)} <small style="font-size:13px;">km/h</small>`;
+  $('vis').innerHTML = `${Math.round(d.visibility/1000)} <small style="font-size:13px;">km</small>`;
+  $('wico').textContent = wIcon(d.weather[0].id, day);
+  $('sunr').innerHTML = fmtTime(d.sys.sunrise, d.timezone);
+  $('suns').innerHTML = fmtTime(d.sys.sunset, d.timezone);
+  const dl = d.sys.sunset - d.sys.sunrise;
+  $('daylen').textContent = `${Math.floor(dl/3600)}h ${Math.floor((dl%3600)/60)}m`;
+  // Sun dot position
+  const now = Date.now()/1000;
+  const p = Math.max(0, Math.min(1,(now-d.sys.sunrise)/(d.sys.sunset-d.sys.sunrise)));
+  const cx = 5 + 90*p;
+  const cy = 50 - 45*4*p*(1-p);
+  $('sundot').setAttribute('cx', cx.toFixed(1));
+  $('sundot').setAttribute('cy', cy.toFixed(1));
+}
+function renderUV(v) {
+  v = Math.round(v);
+  $('uvi').innerHTML = `${v} <small style="font-size:13px;">${uvLabel(v)}</small>`;
+}
+function renderAQI(data) {
+  const a = data.list[0].main.aqi, c = data.list[0].components;
+  const i = aqiInfo(a);
+  $('aqiv').textContent = a;
+  const lel = $('aqil');
+  lel.textContent = i.l;
+  lel.style.cssText = `font-size:12px;padding:4px 12px;border-radius:99px;border:1px solid ${i.br};background:${i.bg};color:${i.c};font-weight:600;`;
+  $('aqibar').style.width = i.pct + '%';
+  $('aqid').textContent = i.d;
+  $('pm25').textContent = c.pm2_5.toFixed(1) + ' µg/m³';
+  $('so2').textContent = c.so2.toFixed(1) + ' µg/m³';
+}
+function renderHourly(list, tz) {
+  const slots = list.slice(0, 8);
+  hrTemps = slots.map(s => s.main.temp);
+  const mx = Math.max(...hrTemps), mn = Math.min(...hrTemps), rng = mx-mn||1;
+  const chart = $('hchart'); chart.innerHTML = '';
+  slots.forEach(slot => {
+    const t = slot.main.temp;
+    const hPct = 25 + ((t-mn)/rng)*65;
+    const d = new Date((slot.dt+tz)*1000);
+    const h = d.getUTCHours();
+    const lbl = h===0?'12AM':h<12?`${h}AM`:h===12?'12PM':`${h-12}PM`;
+    const hi = t===mx;
+    const col = document.createElement('div');
+    col.style.cssText = 'flex:1;min-width:40px;display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;';
+    col.innerHTML = `
+      <span class="htip" style="font-size:11px;color:#38bdf8;font-weight:700;margin-bottom:4px;opacity:${hi?1:0};transition:opacity 0.2s;">${disp(t)}</span>
+      <div style="width:100%;border-radius:6px 6px 0 0;background:${hi?'rgba(56,189,248,0.55)':'rgba(56,189,248,0.18)'};height:${hPct}%;transition:background 0.2s;"></div>
+      <span style="font-size:11px;margin-top:6px;color:${hi?'#38bdf8':'#bdc8d1'};font-weight:${hi?'700':'400'};">${lbl}</span>`;
+    col.addEventListener('mouseenter', () => col.querySelector('.htip').style.opacity = '1');
+    col.addEventListener('mouseleave', () => { if (t!==mx) col.querySelector('.htip').style.opacity = '0'; });
+    chart.appendChild(col);
+  });
+}
+function renderForecast(list) {
+  const days = {};
+  list.forEach(item => {
+    const k = new Date(item.dt*1000).toDateString();
+    if (!days[k]) days[k] = [];
+    days[k].push(item);
+  });
+  const keys = Object.keys(days).slice(0,5);
+  fcData = keys.map(k => {
+    const items = days[k];
+    const temps = items.map(i=>i.main.temp);
+    const mid = items[Math.floor(items.length/2)];
+    return { high: Math.max(...temps), low: Math.min(...temps), id: mid.weather[0].id, dt: mid.dt };
+  });
+  const strip = $('fcstrip'); strip.innerHTML = '';
+  fcData.forEach((day, i) => {
+    const name = i===0 ? 'Today' : new Date(day.dt*1000).toLocaleDateString('en-US',{weekday:'short'});
+    const today = i===0;
+    const card = document.createElement('div');
+    card.style.cssText = `border-radius:1.5rem;padding:1.1rem;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;cursor:default;transition:transform 0.2s;${today?'background:rgba(56,189,248,0.13);border:1.5px solid rgba(56,189,248,0.35);':'background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);'}`;
+    card.innerHTML = `
+      <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:${today?'#38bdf8':'#94a3b8'};">${name}</span>
+      <span class="material-symbols-outlined" style="font-size:36px;color:#38bdf8;font-variation-settings:'FILL' 1;">${wIcon(day.id)}</span>
+      <p style="font-size:17px;font-weight:700;">${disp(day.high)}</p>
+      <p style="font-size:13px;color:#94a3b8;">${disp(day.low)}</p>`;
+    if (!today) {
+      card.addEventListener('mouseenter', () => card.style.transform = 'translateY(-4px)');
+      card.addEventListener('mouseleave', () => card.style.transform = '');
+    }
+    strip.appendChild(card);
+  });
+  // Precip
+  const todayItems = days[keys[0]] || [];
+  const maxPop = Math.round(Math.max(...todayItems.map(i=>(i.pop||0)*100)));
+  $('pop').textContent = maxPop + '%';
+  $('popd').textContent = maxPop > 40 ? 'Rain likely today. Carry an umbrella!'
+    : maxPop > 10 ? 'Slight chance of rain. Stay prepared.'
+    : 'Expect dry conditions for the rest of the week.';
+}
+function refreshAll() {
+  $('tempdis').textContent = disp(tempC);
+  $('feels').textContent = `Feels like ${disp(feelsC)}`;
+  // hourly tips
+  document.querySelectorAll('#hchart .htip').forEach((el,i) => {
+    if (hrTemps[i]!==undefined) el.textContent = disp(hrTemps[i]);
+  });
+  // forecast cards
+  const cards = $('fcstrip').children;
+  fcData.forEach((d,i) => {
+    if (cards[i]) {
+      const ps = cards[i].querySelectorAll('p');
+      if (ps[0]) ps[0].textContent = disp(d.high);
+      if (ps[1]) ps[1].textContent = disp(d.low);
+    }
+  });
+}
+
+// ── Unit toggle ──
+window.setUnit = function(u) {
+  unit = u;
+  $('btnc').style.cssText = u==='C'
+    ? 'padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;background:#38bdf8;color:#00354a;transition:all 0.2s;'
+    : 'padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;color:#bdc8d1;transition:all 0.2s;';
+  $('btnf').style.cssText = u==='F'
+    ? 'padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;background:#38bdf8;color:#00354a;transition:all 0.2s;'
+    : 'padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;color:#bdc8d1;transition:all 0.2s;';
+  $('unitnav').textContent = `Unit: °${u}`;
+  refreshAll();
+};
+
+// ── Theme toggle ──
+$('themetgl').addEventListener('click', () => {
+  document.body.classList.toggle('light');
+  $('themeico').textContent = document.body.classList.contains('light') ? 'dark_mode' : 'light_mode';
+});
+
+// ── Search logic (shared between desktop + mobile) ──
+async function getSuggestions(q, dropEl) {
+  try {
+    const r = await fetch(`https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(q)}&limit=5&appid=${KEY}`);
+    const data = await r.json();
+    if (!data.length) { dropEl.style.display='none'; return; }
+    dropEl.innerHTML = data.map(c =>
+      `<div class="drop-item" onclick="pick(${c.lat},${c.lon})">${c.name}${c.state?', '+c.state:''}, ${c.country}</div>`
+    ).join('');
+    dropEl.style.display = 'block';
+  } catch { dropEl.style.display = 'none'; }
+}
+
+function wireSearch(inputEl, dropEl) {
+  inputEl.addEventListener('input', () => {
+    clearTimeout(stimer);
+    const q = inputEl.value.trim();
+    if (q.length < 2) { dropEl.style.display='none'; return; }
+    stimer = setTimeout(() => getSuggestions(q, dropEl), 380);
+  });
+  inputEl.addEventListener('keydown', e => {
+    if (e.key==='Enter') { dropEl.style.display='none'; fetchByName(inputEl.value.trim()); inputEl.value=''; }
+  });
+}
+
+wireSearch($('si'), $('sdrop'));
+wireSearch($('msi'), $('msdrop'));
+
+$('sibtn').addEventListener('click', () => {
+  const q = $('si').value.trim();
+  if (q) { $('sdrop').style.display='none'; fetchByName(q); $('si').value=''; }
+  else $('si').focus();
+});
+
+document.addEventListener('click', e => {
+  if (!$('dsearch')?.contains(e.target)) $('sdrop').style.display='none';
+  const mb = document.querySelector('.mbar');
+  if (mb && !mb.contains(e.target)) $('msdrop').style.display='none';
+});
+
+window.pick = function(lat, lon) {
+  $('sdrop').style.display='none';
+  $('msdrop').style.display='none';
+  $('si').value=''; $('msi').value='';
+  load(lat, lon);
+};
+
+async function fetchByName(name) {
+  if (!name) return;
+  try {
+    const r = await fetch(`https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(name)}&limit=1&appid=${KEY}`);
+    const geo = await r.json();
+    if (!geo.length) { toast('City not found. Try again.'); return; }
+    load(geo[0].lat, geo[0].lon);
+  } catch { toast('Network error. Check your connection.'); }
+}
+
+async function load(lat, lon) {
+  showOv();
+  try {
+    const [wr, fr, ar, or_] = await Promise.all([
+      fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${KEY}&units=metric`),
+      fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${KEY}&units=metric`),
+      fetch(`https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${KEY}`),
+      fetch(`https://api.openweathermap.org/data/2.5/onecall?lat=${lat}&lon=${lon}&appid=${KEY}&units=metric&exclude=minutely,alerts`)
+    ]);
+    const [w, f, a] = await Promise.all([wr.json(), fr.json(), ar.json()]);
+    let uv = 5;
+    if (or_.ok) { const o = await or_.json(); if (o.current?.uvi!=null) uv = o.current.uvi; }
+    renderCurrent(w);
+    renderUV(uv);
+    renderAQI(a);
+    renderHourly(f.list, w.timezone);
+    renderForecast(f.list);
+    hideOv();
+  } catch(e) {
+    console.error(e);
+    hideOv();
+    toast('Failed to load weather data.');
+  }
+}
+
+// Init
+load(19.076, 72.877);
+</script>
+</body>
+</html>
